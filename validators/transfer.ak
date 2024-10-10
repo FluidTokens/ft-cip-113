@@ -37,9 +37,9 @@ pub type AccountDatum {
 
 pub type Redeemer {
   Transfer {
-    proofsWL: Pairs<ByteArray, Proof>,
-    proofsBL: Pairs<ByteArray, Proof>,
-    statusList: List<Data>,
+    proofsWL: Option<Pairs<ByteArray, Proof>>,
+    proofsBL: Option<Pairs<ByteArray, Proof>>,
+    statusList: Option<List<Data>>,
     token_index: Int,
   }
 }
@@ -77,7 +77,7 @@ validator transfer(
   withdraw(redeemer: Redeemer, account: Credential, self: Transaction) {
     //even if there are different addresses involved, the patricia trie is the same, so one reference input
 
-    let Transfer(proofsWL, proofsBL, _, token_index) = redeemer
+    let Transfer(maybeProofsWL, maybeProofsBL, _, token_index) = redeemer
     expect Some(referenceInputAccountManager) =
       list.at(self.reference_inputs, token_index)
     expect InlineDatum(datum) = referenceInputAccountManager.output.datum
@@ -86,8 +86,8 @@ validator transfer(
     expect Permissions(maybe_wl, maybe_bl): AccountDatum = datum_account
     and {
       token_with_credentials_in_contract(account, self),
-      wl_checks(flagwl, self, account, proofsWL, maybe_wl),
-      bl_checks(flagbl, self, account, proofsBL, maybe_bl),
+      wl_checks(flagwl, self, account, maybeProofsWL, maybe_wl),
+      bl_checks(flagbl, self, account, maybeProofsBL, maybe_bl),
       status_check(),
       quantity_of(referenceInputAccountManager.output.value, hash, "root") == 1,
     }
@@ -106,13 +106,15 @@ pub fn wl_checks(
   flag: Bool,
   self: Transaction,
   account: Credential,
-  proofsWL: Pairs<ByteArray, Proof>,
+  maybeProofsWL: Option<Pairs<ByteArray, Proof>>,
   maybe_wl: Option<ByteArray>,
 ) {
-  expect Some(root_wl) = maybe_wl
-  or {
-    !flag,
-    credentials_wl(account, self, proofsWL, from_root(root_wl)),
+  if !flag {
+    True
+  } else {
+    expect Some(root_wl) = maybe_wl
+    expect Some(proofsWL) = maybeProofsWL
+    credentials_wl(account, self, proofsWL, from_root(root_wl))
   }
 }
 
@@ -120,13 +122,15 @@ pub fn bl_checks(
   flag: Bool,
   self: Transaction,
   account: Credential,
-  proofsBL: Pairs<ByteArray, Proof>,
+  maybeProofsBL: Option<Pairs<ByteArray, Proof>>,
   maybe_bl: Option<ByteArray>,
 ) {
-  expect Some(root_bl) = maybe_bl
-  or {
-    !flag,
-    credentials_not_bl(account, self, proofsBL, from_root(root_bl)),
+  if !flag {
+    True
+  } else {
+    expect Some(root_bl) = maybe_bl
+    expect Some(proofsBL) = maybeProofsBL
+    credentials_not_bl(account, self, proofsBL, from_root(root_bl))
   }
 }
 
