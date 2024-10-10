@@ -1,9 +1,10 @@
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs.{has_key}
 use aiken/merkle_patricia_forestry.{
   MerklePatriciaForestry, Proof, from_root, has, insert,
 }
-use cardano/address.{Credential, Inline, Script, VerificationKey}
+use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   Datum, InlineDatum, Input, Output, OutputReference, Transaction,
@@ -13,33 +14,43 @@ use cardano/transaction.{
 //the utxo containing the patricia trees roots are identified with the utxo with the token policy.root
 //Users CAN have accounts according to the implementation that has some Data stored related to the user
 pub type AccountDatum {
-  root_wl: Option<ByteArray>,
-  root_bl: Option<ByteArray>,
-  status: Option<Data>,
+  Permissions { root_wl: Option<ByteArray>, root_bl: Option<ByteArray> }
+  UserStatus { status: Option<Data> }
 }
 
-//the redeemer for withdraw should be a pair Hash/Proof
+//the redeemer for withdraw should be a pair Hash/Proof, in CASE it CAN BE REDUCED TO A SINGLE REDEEMER TransferComplete, where we put option every field
+// pub type Redeemer {
+//   Tranfer
+//   TransferWL { proofsWL: Pairs<ByteArray, Proof> }
+//   TransferBL { proofsBL: Pairs<ByteArray, Proof> }
+//   TransferWBL {
+//     proofsWL: Pairs<ByteArray, Proof>,
+//     proofsBL: Pairs<ByteArray, Proof>,
+//   }
+//   TransferStatus { statusList: List<Data> }
+//   TransferComplete {
+//     proofsWL: Pairs<ByteArray, Proof>,
+//     proofsBL: Pairs<ByteArray, Proof>,
+//     statusList: List<Data>,
+//   }
+// }
+
 pub type Redeemer {
-  Tranfer
-  TransferWL { proofsWL: Pairs<ByteArray, Proof> }
-  TransferBL { proofsBL: Pairs<ByteArray, Proof> }
-  TransferWBL {
-    proofsWL: Pairs<ByteArray, Proof>,
-    proofsBL: Pairs<ByteArray, Proof>,
-  }
-  TransferStatus { statusList: List<Data> }
-  TransferComplete {
+  Transfer {
     proofsWL: Pairs<ByteArray, Proof>,
     proofsBL: Pairs<ByteArray, Proof>,
     statusList: List<Data>,
+    token_index: Int,
   }
 }
 
-const owner = #""
-
-const assetName = #""
-
-validator transfer {
+validator transfer(
+  owner: ByteArray,
+  assetName: ByteArray,
+  flagwl: Bool,
+  flagbl: Bool,
+  flagstatus: Bool,
+) {
   spend(
     _datum: Option<Datum>,
     _redeemer: Redeemer,
@@ -65,50 +76,62 @@ validator transfer {
 
   withdraw(redeemer: Redeemer, account: Credential, self: Transaction) {
     //even if there are different addresses involved, the patricia trie is the same, so one reference input
-    expect Some(referenceInput) = list.at(self.reference_inputs, 0)
-    expect InlineDatum(datum) = referenceInput.output.datum
+
+    let Transfer(proofsWL, proofsBL, _, token_index) = redeemer
+    expect Some(referenceInputAccountManager) =
+      list.at(self.reference_inputs, token_index)
+    expect InlineDatum(datum) = referenceInputAccountManager.output.datum
     expect datum_account: AccountDatum = datum
     expect Script(hash) = account
-    when redeemer is {
-      Tranfer -> token_with_credentials_in_contract(account, self)
-      TransferBL(proofsBL) -> {
-        expect Some(root_bl) = datum_account.root_bl
-        and {
-          token_with_credentials_in_contract(account, self),
-          credentials_not_bl(account, self, proofsBL, from_root(root_bl)),
-          quantity_of(referenceInput.output.value, hash, "root") == 1,
-        }
-      }
-      TransferWL(proofsWL) -> {
-        expect Some(root_wl) = datum_account.root_wl
-        and {
-          token_with_credentials_in_contract(account, self),
-          credentials_wl(account, self, proofsWL, from_root(root_wl)),
-          quantity_of(referenceInput.output.value, hash, "root") == 1,
-        }
-      }
-      TransferWBL(proofsWL, proofsBL) -> {
-        expect Some(root_wl) = datum_account.root_wl
-        expect Some(root_bl) = datum_account.root_bl
-        and {
-          token_with_credentials_in_contract(account, self),
-          credentials_wl(account, self, proofsWL, from_root(root_wl)),
-          credentials_not_bl(account, self, proofsBL, from_root(root_bl)),
-          quantity_of(referenceInput.output.value, hash, "root") == 1,
-        }
-      }
-      TransferStatus(_) -> False
-      TransferComplete(_, _, _) -> False
+    expect Permissions(maybe_wl, maybe_bl): AccountDatum = datum_account
+    and {
+      token_with_credentials_in_contract(account, self),
+      wl_checks(flagwl, self, account, proofsWL, maybe_wl),
+      bl_checks(flagbl, self, account, proofsBL, maybe_bl),
+      status_check(),
+      quantity_of(referenceInputAccountManager.output.value, hash, "root") == 1,
     }
   }
 
   mint(_redeemer: Redeemer, _policy: PolicyId, self: Transaction) {
-    list.has(self.extra_signatories, owner)
+    is_owner_signing(owner, self)
   }
 
   else(_) {
     fail
   }
+}
+
+pub fn wl_checks(
+  flag: Bool,
+  self: Transaction,
+  account: Credential,
+  proofsWL: Pairs<ByteArray, Proof>,
+  maybe_wl: Option<ByteArray>,
+) {
+  expect Some(root_wl) = maybe_wl
+  or {
+    !flag,
+    credentials_wl(account, self, proofsWL, from_root(root_wl)),
+  }
+}
+
+pub fn bl_checks(
+  flag: Bool,
+  self: Transaction,
+  account: Credential,
+  proofsBL: Pairs<ByteArray, Proof>,
+  maybe_bl: Option<ByteArray>,
+) {
+  expect Some(root_bl) = maybe_bl
+  or {
+    !flag,
+    credentials_not_bl(account, self, proofsBL, from_root(root_bl)),
+  }
+}
+
+pub fn status_check() {
+  True
 }
 
 pub fn token_with_credentials_in_contract(
@@ -125,30 +148,14 @@ pub fn token_with_credentials_in_contract(
         expect Some(stake_cred) = input.output.address.stake_credential
         expect Inline(a) = stake_cred
         expect VerificationKey(hash) = a
-        or {
-          list.has(self.extra_signatories, hash),
-          has_key(self.withdrawals, Script(hash)),
-        }
+        is_owner_signing(hash, self)
       },
     ),
-    or {
-      and {
-        get_input_token_contract(self.inputs, hash) - quantity_of(
-          self.mint,
-          hash,
-          assetName,
-        ) == get_output_token_contract(self.outputs, hash),
-        quantity_of(self.mint, hash, assetName) <= 0,
-      },
-      and {
-        get_input_token_contract(self.inputs, hash) + quantity_of(
-          self.mint,
-          hash,
-          assetName,
-        ) == get_output_token_contract(self.outputs, hash),
-        quantity_of(self.mint, hash, assetName) > 0,
-      },
-    },
+    get_input_token_contract(self.inputs, hash) + quantity_of(
+      self.mint,
+      hash,
+      assetName,
+    ) == get_output_token_contract(self.outputs, hash),
   }
 }
 
@@ -226,4 +233,27 @@ fn is_not_blacklisted(trie, element, proof) {
 
 fn is_whitelisted(trie, element, proof) {
   has(trie, element, "whitelist", proof)
+}
+
+fn is_owner_signing(hash: ByteArray, tx: Transaction) {
+  let fst_token_quantity =
+    tx.mint
+      |> assets.tokens(hash)
+      |> dict.size()
+  or {
+    list.has(tx.extra_signatories, hash),
+    has_key(tx.withdrawals, Script(hash)),
+    list.any(
+      tx.inputs,
+      fn(input) {
+        let Input { output, .. } = input
+        let Output { address: out_address, .. } = output
+        let Address { payment_credential: out_payment_credential, .. } =
+          out_address
+        out_payment_credential == VerificationKey(hash)
+      },
+    ),
+    fst_token_quantity != 0,
+  }
+  //IMO even 0 is ok to allow multisignatures, however how can we validate that the policy is present?
 }

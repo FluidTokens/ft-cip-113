@@ -1,5 +1,8 @@
+use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs.{has_key}
 use aiken/merkle_patricia_forestry.{Proof, from_root, insert, root}
+use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets.{quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -12,9 +15,8 @@ use cardano/transaction.{
 //account manager datum
 
 pub type Datum {
-  root_wl: Option<ByteArray>,
-  root_bl: Option<ByteArray>,
-  status: Option<Data>,
+  Permissions { root_wl: Option<ByteArray>, root_bl: Option<ByteArray> }
+  UserStatus { status: Option<Data> }
 }
 
 //option prove per i redeemer nei transfer, index e tutto lo schifo
@@ -26,11 +28,7 @@ pub type Redeemer {
   AddStatus { hash: ByteArray }
 }
 
-const owner = #""
-
-const policy_token = #""
-
-validator account {
+validator account(owner: ByteArray, policy_token: ByteArray) {
   spend(
     datum: Option<Datum>,
     redeemer: Redeemer,
@@ -46,7 +44,7 @@ validator account {
         expect InlineDatum(output_datum) = output.datum
         expect parsed_datum: Datum = output_datum
         and {
-          list.has(self.extra_signatories, owner),
+          is_owner_signing(owner, self),
           updated_datum_wl(datum, hash, proof, "whitelist") == parsed_datum,
           quantity_of(input.output.value, policy_token, "root") == 1,
           input.output.value == output.value,
@@ -58,7 +56,7 @@ validator account {
         expect InlineDatum(output_datum) = output.datum
         expect parsed_datum: Datum = output_datum
         and {
-          list.has(self.extra_signatories, owner),
+          is_owner_signing(owner, self),
           updated_datum_bl(datum, hash, proof, "blacklist") == parsed_datum,
           quantity_of(input.output.value, policy_token, "root") == 1,
           input.output.value == output.value,
@@ -79,12 +77,12 @@ pub fn updated_datum_wl(
   proof: Proof,
   value: ByteArray,
 ) {
-  expect Some(root_wl) = oldDatum.root_wl
-  let new_datum =
-    Datum {
+  expect Permissions(maybe_wl, maybe_bl) = oldDatum
+  expect Some(root_wl) = maybe_wl
+  let new_datum: Datum =
+    Permissions {
       root_wl: Some(root(insert(from_root(root_wl), hash, value, proof))),
-      root_bl: oldDatum.root_bl,
-      status: oldDatum.status,
+      root_bl: maybe_bl,
     }
   new_datum
 }
@@ -95,12 +93,35 @@ pub fn updated_datum_bl(
   proof: Proof,
   value: ByteArray,
 ) {
-  expect Some(root_bl) = oldDatum.root_bl
-  let new_datum =
-    Datum {
-      root_wl: oldDatum.root_wl,
+  expect Permissions(maybe_wl, maybe_bl) = oldDatum
+  expect Some(root_bl) = maybe_bl
+  let new_datum: Datum =
+    Permissions {
+      root_wl: maybe_wl,
       root_bl: Some(root(insert(from_root(root_bl), hash, value, proof))),
-      status: oldDatum.status,
     }
   new_datum
+}
+
+fn is_owner_signing(hash: ByteArray, tx: Transaction) {
+  let fst_token_quantity =
+    tx.mint
+      |> assets.tokens(hash)
+      |> dict.size()
+  or {
+    list.has(tx.extra_signatories, hash),
+    has_key(tx.withdrawals, Script(hash)),
+    list.any(
+      tx.inputs,
+      fn(input) {
+        let Input { output, .. } = input
+        let Output { address: out_address, .. } = output
+        let Address { payment_credential: out_payment_credential, .. } =
+          out_address
+        out_payment_credential == VerificationKey(hash)
+      },
+    ),
+    fst_token_quantity != 0,
+  }
+  //IMO even 0 is ok to allow multisignatures, however how can we validate that the policy is present?
 }
