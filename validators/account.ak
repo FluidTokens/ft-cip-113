@@ -16,8 +16,10 @@ use cardano/transaction.{
 
 pub type Datum {
   Permissions { root_wl: Option<ByteArray>, root_bl: Option<ByteArray> }
-  UserStatus { status: Option<Data> }
+  UserStatus { status: Option<Data>, credentials: Data }
 }
+
+
 
 //option prove per i redeemer nei transfer, index e tutto lo schifo
 //lunghezza degli indici del redeemer dello stato corrisponda al numero effettivo di input e che combacino gli stati alle credenziali

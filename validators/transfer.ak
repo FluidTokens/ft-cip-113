@@ -88,7 +88,7 @@ validator transfer(
       token_with_credentials_in_contract(account, self),
       wl_checks(flagwl, self, account, maybeProofsWL, maybe_wl),
       bl_checks(flagbl, self, account, maybeProofsBL, maybe_bl),
-      status_check(),
+      status_check(),//solo l'owner può aggiornare lo status
       quantity_of(referenceInputAccountManager.output.value, hash, "root") == 1,
     }
   }
