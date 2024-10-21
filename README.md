@@ -1,65 +1,65 @@
-# smart-account
+# ft-cip-113
 
-Write validators in the `validators` folder, and supporting functions in the `lib` folder using `.ak` as a file extension.
+This repository contains the code for creating a programmable token DEX integration with CIP-113 tokens. It is split into two main parts, each covering a specific aspect of the integration:
 
-```aiken
-validator my_first_validator {
-  spend(_datum: Option<Data>, _redeemer: Data, _output_reference: Data, _context: Data) {
-    True
-  }
-}
-```
+1. **DEX Validators** (`dexValidators` folder)
+2. **Token Validators** (`validators` folder)
 
-## Building
+## Overview
 
-```sh
-aiken build
-```
+### What is CIP-113?
+CIP-113 refers to a proposal for managing the lifecycle and functionality of native tokens on the Cardano blockchain. It allows enhanced programmability and governance capabilities for tokens. This repository utilizes CIP-113 to integrate tokens into a decentralized exchange (DEX), making them programmable and functional within smart contracts.
 
-## Configuring
+### How Does It Work?
+The repository is structured into two main components, described below:
 
-**aiken.toml**
-```toml
-[config.default]
-network_id = 41
-```
+---
 
-Or, alternatively, write conditional environment modules under `env`.
+## 1. DEX Validators (`dexValidators` folder)
 
-## Testing
+This section contains the logic related to the decentralized exchange (DEX) integration. Key functionalities include:
 
-You can write tests in any module using the `test` keyword. For example:
+- **Create Orders**: Allows users to create orders for token swaps.
+- **Submit Orders**: Enables users to submit or fill orders, executing a swap between tokens.
+- **Cancel Orders**: Provides the ability for users to cancel existing open orders, withdrawing their tokens.
+- **Swap Logic**: Code for executing token swaps between CIP-113 tokens and other native tokens.
 
-```aiken
-use config
+These validators define the rules and logic that govern the order creation, cancellation, and swapping process within the DEX.
 
-test foo() {
-  config.network_id + 1 == 42
-}
-```
+---
 
-To run all tests, simply do:
+## 2. Token Validators (`validators` folder)
 
-```sh
-aiken check
-```
+This section contains the lifecycle management code for CIP-113 tokens. It includes:
 
-To run only tests matching the string `foo`, do:
+- **CIP-113 Token Logic**: Defines how CIP-113 tokens are issued, transferred, and managed within the DEX.
+- **Lifecycle Management**: Code that handles the lifecycle events of CIP-113 tokens, such as minting, burning, and updating token states.
 
-```sh
-aiken check -m foo
-```
+These validators are responsible for enforcing the rules around CIP-113 tokens as they are utilized within the DEX environment.
 
-## Documentation
+---
 
-If you're writing a library, you might want to generate an HTML documentation for it.
+## How to Use
 
-Use:
+1. Clone the repository:
 
-```sh
-aiken docs
-```
+    ```bash
+    git clone https://github.com/fluidtokens/ft-cip-113.git
+    cd ft-cip-113
+    ```
 
-## Resources
+2. Navigate to the desired folder (`dexValidators` or `validators`) to explore the specific logic you're interested in.
 
-Find more on the [Aiken's user manual](https://aiken-lang.org).
+3. Deploy the validators using your preferred Cardano smart contract toolset (e.g., Plutus or Cardano CLI).
+
+---
+
+## Contribution
+
+Feel free to contribute by submitting issues or pull requests. For major changes, please open an issue first to discuss what you would like to change.
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
