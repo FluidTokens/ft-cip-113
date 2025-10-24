@@ -4,6 +4,8 @@ This repository contains the code for a **programmable token DEX integration** u
 
 ## Overview
 
+The solution can be tested at https://minswap-cip113-dev.fluidtokens.com/ in preview testnet (it's a private testnet)
+
 ### What is CIP-113?
 
 CIP-113 introduces a specification for **programmable tokens** on the Cardano blockchain. These tokens behave like native assets but remain forever locked inside smart contracts. This design ensures programmability while avoiding risks such as unintentionally locking non-programmable native tokens. CIP-113 tokens enable advanced functionality, such as:
